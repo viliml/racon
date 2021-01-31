@@ -54,7 +54,7 @@ public:
     virtual void initialize();
 
     virtual void polish(std::vector<std::unique_ptr<Sequence>>& dst,
-        bool drop_unpolished_sequences);
+                        bool drop_unpolished_sequences);
 
     friend std::unique_ptr<Polisher> createPolisher(const std::string& sequences_path,
         const std::string& overlaps_path, const std::string& target_path,

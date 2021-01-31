@@ -24,7 +24,11 @@ if(racon_enable_cuda)
         message(STATUS "Using CUDA ${CUDA_VERSION} from ${CUDA_TOOLKIT_ROOT_DIR}")
         set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -lineinfo")
     endif()
+else()
+    find_package(MPI REQUIRED)
+    include_directories(${MPI_INCLUDE_PATH})
 endif()
+
 
 include_directories(${PROJECT_SOURCE_DIR}/src)
 
@@ -91,7 +95,21 @@ endif()
 target_link_libraries(racon bioparser spoa thread_pool edlib_static)
 if (racon_enable_cuda)
     target_link_libraries(racon cudapoa cudaaligner)
+else()
+    link_libraries()
+    target_link_libraries(racon ${MPI_LIBRARIES})
+
+    if(MPI_COMPILE_FLAGS)
+        set_target_properties(racon PROPERTIES
+                COMPILE_FLAGS "${MPI_COMPILE_FLAGS}")
+    endif()
+
+    if(MPI_LINK_FLAGS)
+        set_target_properties(racon PROPERTIES
+                LINK_FLAGS "${MPI_LINK_FLAGS}")
+    endif()
 endif()
+
 
 install(TARGETS racon DESTINATION bin)
 

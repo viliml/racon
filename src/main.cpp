@@ -10,7 +10,10 @@
 #include "polisher.hpp"
 #ifdef CUDA_ENABLED
 #include "cuda/cudapolisher.hpp"
+#else
+#include <mpi.h>
 #endif
+
 
 #ifndef RACON_VERSION
 #error "Undefined version for Racon. Please pass version using -DRACON_VERSION macro."
@@ -44,9 +47,27 @@ static struct option options[] = {
 
 void help();
 
+void worker(int rank, int size);
+
 int main(int argc, char** argv) {
+    int exit_code = 0;
+#ifndef CUDA_ENABLED
+    int rank, size;
+
+    MPI_Init( &argc, &argv );
+    MPI_Comm_rank( MPI_COMM_WORLD, &rank );
+    MPI_Comm_size( MPI_COMM_WORLD, &size );
+
+    if (rank != 0) {
+        worker(rank, size);
+        return 0;
+    }
+
+    fprintf(stderr, "Size = %d\n", size);
+#endif
 
     std::vector<std::string> input_paths;
+    std::unique_ptr<racon::Polisher> polisher;
 
     uint32_t window_length = 500;
     double quality_threshold = 10.0;
@@ -106,10 +127,10 @@ int main(int argc, char** argv) {
                 break;
             case 'v':
                 printf("%s\n", version);
-                exit(0);
+                MPI_Abort(MPI_COMM_WORLD, 0);
             case 'h':
                 help();
-                exit(0);
+                MPI_Abort(MPI_COMM_WORLD, 0);
 #ifdef CUDA_ENABLED
             case 'c':
                 //if option c encountered, cudapoa_batches initialized with a default value of 1.
@@ -135,7 +156,7 @@ int main(int argc, char** argv) {
                 break;
 #endif
             default:
-                exit(1);
+                MPI_Abort(MPI_COMM_WORLD, 1);
         }
     }
 
@@ -146,26 +167,33 @@ int main(int argc, char** argv) {
     if (input_paths.size() < 3) {
         fprintf(stderr, "[racon::] error: missing input file(s)!\n");
         help();
-        exit(1);
+        MPI_Abort(MPI_COMM_WORLD, 1);
     }
 
-    auto polisher = racon::createPolisher(input_paths[0], input_paths[1],
+    fprintf(stdout, "begin\n");
+    polisher = racon::createPolisher(input_paths[0], input_paths[1],
         input_paths[2], type == 0 ? racon::PolisherType::kC :
         racon::PolisherType::kF, window_length, quality_threshold,
         error_threshold, trim, match, mismatch, gap, num_threads,
         cudapoa_batches, cuda_banded_alignment, cudaaligner_batches,
         cudaaligner_band_width);
 
+    fprintf(stdout, "preinit\n");
+
     polisher->initialize();
+
+    fprintf(stdout, "postinit\n");
 
     std::vector<std::unique_ptr<racon::Sequence>> polished_sequences;
     polisher->polish(polished_sequences, drop_unpolished_sequences);
+    fprintf(stdout, "postpolish %llu\n", polished_sequences.size());
+
 
     for (const auto& it: polished_sequences) {
         fprintf(stdout, ">%s\n%s\n", it->name().c_str(), it->data().c_str());
     }
 
-    return 0;
+    MPI_Abort(MPI_COMM_WORLD, 0);
 }
 
 void help() {
@@ -231,4 +259,8 @@ void help() {
         "            band width, whereas 0 implies auto band width determination.\n"
 #endif
     );
+}
+
+void worker(int rank, int size) {
+    while (true);
 }

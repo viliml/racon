@@ -5,6 +5,7 @@
  */
 
 #include <algorithm>
+#include <mpi.h>
 
 #include "sequence.hpp"
 #include "overlap.hpp"
@@ -55,7 +56,7 @@ Overlap::Overlap(const char* q_name, uint32_t q_name_length, uint32_t flag,
     if (cigar_.size() < 2 && is_valid_) {
         fprintf(stderr, "[Racon::Overlap::Overlap] error: "
             "missing alignment from SAM object!\n");
-        exit(1);
+        MPI_Abort(MPI_COMM_WORLD, 1);
     } else {
         for (uint32_t i = 0; i < cigar_.size(); ++i) {
             if (cigar_[i] == 'S' || cigar_[i] == 'H') {
@@ -149,7 +150,7 @@ void Overlap::transmute(const std::vector<std::unique_ptr<Sequence>>& sequences,
         fprintf(stderr, "[racon::Overlap::transmute] error: "
             "unequal lengths in sequence and overlap file for sequence %s!\n",
             sequences[q_id_]->name().c_str());
-        exit(1);
+        MPI_Abort(MPI_COMM_WORLD, 1);
     }
 
     if (!t_name_.empty()) {
@@ -167,7 +168,7 @@ void Overlap::transmute(const std::vector<std::unique_ptr<Sequence>>& sequences,
         fprintf(stderr, "[racon::Overlap::transmute] error: "
             "unequal lengths in target and overlap file for target %s!\n",
             sequences[t_id_]->name().c_str());
-        exit(1);
+        MPI_Abort(MPI_COMM_WORLD, 1);
     }
 
     // for SAM input
@@ -182,7 +183,7 @@ void Overlap::find_breaking_points(const std::vector<std::unique_ptr<Sequence>>&
     if (!is_transmuted_) {
         fprintf(stderr, "[racon::Overlap::find_breaking_points] error: "
             "overlap is not transmuted!\n");
-        exit(1);
+        MPI_Abort(MPI_COMM_WORLD, 1);
     }
 
     if (!breaking_points_.empty()) {
@@ -217,7 +218,7 @@ void Overlap::align_overlaps(const char* q, uint32_t q_length, const char* t, ui
     } else {
         fprintf(stderr, "[racon::Overlap::find_breaking_points] error: "
                 "edlib unable to align pair (%zu x %zu)!\n", q_id_, t_id_);
-        exit(1);
+        MPI_Abort(MPI_COMM_WORLD, 1);
     }
 
     edlibFreeAlignResult(result);

@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <unordered_set>
 #include <iostream>
+#include <mpi.h>
 
 #include "overlap.hpp"
 #include "sequence.hpp"
@@ -61,12 +62,12 @@ std::unique_ptr<Polisher> createPolisher(const std::string& sequences_path,
 
     if (type != PolisherType::kC && type != PolisherType::kF) {
         fprintf(stderr, "[racon::createPolisher] error: invalid polisher type!\n");
-        exit(1);
+        MPI_Abort(MPI_COMM_WORLD, 1);
     }
 
     if (window_length == 0) {
         fprintf(stderr, "[racon::createPolisher] error: invalid window length!\n");
-        exit(1);
+        MPI_Abort(MPI_COMM_WORLD, 1);
     }
 
     std::unique_ptr<bioparser::Parser<Sequence>> sparser = nullptr,
@@ -95,7 +96,7 @@ std::unique_ptr<Polisher> createPolisher(const std::string& sequences_path,
             ".fasta, .fasta.gz, .fna, .fna.gz, .fa, .fa.gz, .fastq, .fastq.gz, "
             ".fq, .fq.gz)!\n",
             sequences_path.c_str());
-        exit(1);
+        MPI_Abort(MPI_COMM_WORLD, 1);
     }
 
     if (is_suffix(overlaps_path, ".mhap") || is_suffix(overlaps_path, ".mhap.gz")) {
@@ -111,7 +112,7 @@ std::unique_ptr<Polisher> createPolisher(const std::string& sequences_path,
         fprintf(stderr, "[racon::createPolisher] error: "
             "file %s has unsupported format extension (valid extensions: "
             ".mhap, .mhap.gz, .paf, .paf.gz, .sam, .sam.gz)!\n", overlaps_path.c_str());
-        exit(1);
+        MPI_Abort(MPI_COMM_WORLD, 1);
     }
 
     if (is_suffix(target_path, ".fasta") || is_suffix(target_path, ".fasta.gz") ||
@@ -129,7 +130,7 @@ std::unique_ptr<Polisher> createPolisher(const std::string& sequences_path,
             ".fasta, .fasta.gz, .fna, .fna.gz, .fa, .fa.gz, .fastq, .fastq.gz, "
             ".fq, .fq.gz)!\n",
             target_path.c_str());
-        exit(1);
+        MPI_Abort(MPI_COMM_WORLD, 1);
     }
 
     if (cudapoa_batches > 0 || cudaaligner_batches > 0)
@@ -146,7 +147,7 @@ std::unique_ptr<Polisher> createPolisher(const std::string& sequences_path,
                 "Attemping to use CUDA when CUDA support is not available.\n"
                 "Please check logic in %s:%s\n",
                 __FILE__, __func__);
-        exit(1);
+        MPI_Abort(MPI_COMM_WORLD, 1);
 #endif
     }
     else
@@ -484,23 +485,25 @@ void Polisher::find_overlap_breaking_points(std::vector<std::unique_ptr<Overlap>
 }
 
 void Polisher::polish(std::vector<std::unique_ptr<Sequence>>& dst,
-    bool drop_unpolished_sequences) {
+                      bool drop_unpolished_sequences) {
 
     logger_->log();
+
+    fprintf(stdout, "window count: %d", windows_.size());
 
     std::vector<std::future<bool>> thread_futures;
     for (uint64_t i = 0; i < windows_.size(); ++i) {
         thread_futures.emplace_back(thread_pool_->submit(
-            [&](uint64_t j) -> bool {
-                auto it = thread_to_id_.find(std::this_thread::get_id());
-                if (it == thread_to_id_.end()) {
-                    fprintf(stderr, "[racon::Polisher::polish] error: "
-                        "thread identifier not present!\n");
-                    exit(1);
-                }
-                return windows_[j]->generate_consensus(
-                    alignment_engines_[it->second], trim_);
-            }, i));
+                [&](uint64_t j) -> bool {
+                    auto it = thread_to_id_.find(std::this_thread::get_id());
+                    if (it == thread_to_id_.end()) {
+                        fprintf(stderr, "[racon::Polisher::polish] error: "
+                                        "thread identifier not present!\n");
+                        exit(1);
+                    }
+                    return windows_[j]->generate_consensus(
+                            alignment_engines_[it->second], trim_);
+                }, i));
     }
 
     std::string polished_data = "";
@@ -516,7 +519,7 @@ void Polisher::polish(std::vector<std::unique_ptr<Sequence>>& dst,
 
         if (i == windows_.size() - 1 || windows_[i + 1]->rank() == 0) {
             double polished_ratio = num_polished_windows /
-                static_cast<double>(windows_[i]->rank() + 1);
+                                    static_cast<double>(windows_[i]->rank() + 1);
 
             if (!drop_unpolished_sequences || polished_ratio > 0) {
                 std::string tags = type_ == PolisherType::kF ? "r" : "";
@@ -524,7 +527,7 @@ void Polisher::polish(std::vector<std::unique_ptr<Sequence>>& dst,
                 tags += " RC:i:" + std::to_string(targets_coverages_[windows_[i]->id()]);
                 tags += " XC:f:" + std::to_string(polished_ratio);
                 dst.emplace_back(createSequence(sequences_[windows_[i]->id()]->name() +
-                    tags, polished_data));
+                                                tags, polished_data));
             }
 
             num_polished_windows = 0;

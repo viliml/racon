@@ -5,6 +5,7 @@
  */
 
 #include <algorithm>
+#include <mpi.h>
 
 #include "window.hpp"
 
@@ -19,7 +20,7 @@ std::shared_ptr<Window> createWindow(uint64_t id, uint32_t rank, WindowType type
     if (backbone_length == 0 || backbone_length != quality_length) {
         fprintf(stderr, "[racon::createWindow] error: "
             "empty backbone sequence/unequal quality length!\n");
-        exit(1);
+        MPI_Abort(MPI_COMM_WORLD, 1);
     }
 
     return std::shared_ptr<Window>(new Window(id, rank, type, backbone,
@@ -49,12 +50,12 @@ void Window::add_layer(const char* sequence, uint32_t sequence_length,
     if (quality != nullptr && sequence_length != quality_length) {
         fprintf(stderr, "[racon::Window::add_layer] error: "
             "unequal quality size!\n");
-        exit(1);
+        MPI_Abort(MPI_COMM_WORLD, 1);
     }
     if (begin >= end || begin > sequences_.front().second || end > sequences_.front().second) {
         fprintf(stderr, "[racon::Window::add_layer] error: "
             "layer begin and end positions are invalid!\n");
-        exit(1);
+        MPI_Abort(MPI_COMM_WORLD, 1);
     }
 
     sequences_.emplace_back(sequence, sequence_length);
